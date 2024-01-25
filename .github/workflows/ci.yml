@@ -1,0 +1,67 @@
+name: Continuous integration
+on: push
+
+jobs:
+  ci:
+    # This workflow will install Python dependencies, run tests and
+    # lint with a variety of Python versions For more information see:
+    # https://docs.github.com/en/actions/automating-builds-and-tests/building-and-testing-python
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: true
+      matrix:
+        python-version: ["3.11"]
+
+    steps:
+    - uses: actions/checkout@v3
+      with:
+        fetch-depth: 0
+    - name: Set up Python ${{ matrix.python-version }}
+      uses: actions/setup-python@v3
+      with:
+        python-version: ${{ matrix.python-version }}
+    - name: Install dependencies
+      run: |
+        python -m pip install poetry
+        poetry install --all-extras --with=test
+    - name: Lint with ruff
+      run: |
+        poetry run python -m ruff .
+    - name: Test with pytest
+      run: |
+        poetry run python -m pytest -vv --disable-warnings --vcr-record=none --cov-fail-under=100
+      env:
+        PYTHONDONTWRITEBYTECODE: 1
+
+  bump-version:
+    name: "Bump version and create changelog with commitizen"
+    if: "github.ref == 'refs/heads/master' && !startsWith(github.event.head_commit.message, 'bump:')"
+    needs: ci
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: "${{ secrets.PERSONAL_ACCESS_TOKEN }}"
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: "3.11"
+      - name: Install dependencies
+        run: |
+          python -m pip install poetry
+          poetry install
+      - name: Create bump and changelog
+        uses: commitizen-tools/commitizen-action@master
+        with:
+          github_token: ${{ secrets.PERSONAL_ACCESS_TOKEN }}
+          changelog_increment_filename: body.md
+      - name: Release
+        uses: softprops/action-gh-release@v1
+        with:
+          body_path: "body.md"
+          tag_name: ${{ env.REVISION }}
+          skipIfReleaseExists: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

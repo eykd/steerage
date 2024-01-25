@@ -1,0 +1,9 @@
+node_modules/
+*.db
+*.sqlite
+.env
+prof/
+.pymon
+.DS_Store
+*.pyc
+*.egg-info
