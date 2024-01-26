@@ -1,3 +1,9 @@
+## 1.0.2 (2024-01-26)
+
+### Fix
+
+- AbstractShelveQuery().run_data_query() should return dicts, not PMaps
+
 ## 1.0.1 (2024-01-26)
 
 ### Fix
