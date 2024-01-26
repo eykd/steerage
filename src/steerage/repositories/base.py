@@ -72,7 +72,7 @@ class AbstractBaseQuery(ABC, Generic[TEntity]):
         self.ordering = ()
 
     @abstractmethod
-    async def run_data_query(self) -> AsyncGenerator[TEntity, None]:  # pragma: nocover
+    async def run_data_query(self) -> AsyncGenerator[Mapping, None]:  # pragma: nocover
         """Run this query against the backend."""
         raise NotImplementedError
 

@@ -1,5 +1,6 @@
 """An ephemeral in-memory implementation of entity storage"""
 import operator as op
+from collections.abc import Mapping
 from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
 from typing import (
@@ -73,7 +74,7 @@ class AbstractInMemoryQuery(AbstractBaseQuery):
 
     table_name: ClassVar[str]
 
-    async def run_data_query(self) -> AsyncGenerator[PMap, None]:
+    async def run_data_query(self) -> AsyncGenerator[Mapping, None]:
         """Run this query against the in-memory database."""
         rows = Database.tables[self.table_name].values()
 
@@ -99,7 +100,7 @@ class AbstractInMemoryQuery(AbstractBaseQuery):
             rows = fn.take(self.limit, rows)
 
         for row in rows:
-            yield row
+            yield thaw(row)
 
 
 @dataclass(repr=False)
