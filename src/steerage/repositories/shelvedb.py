@@ -134,7 +134,7 @@ class AbstractShelveQuery(AbstractBaseQuery):
             rows = fn.take(self.limit, rows)
 
         for row in rows:
-            yield row
+            yield thaw(row)
 
 
 @dataclass
