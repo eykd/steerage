@@ -248,7 +248,7 @@ class AbstractSQLRepository(AbstractEntityRepository, metaclass=ABCPluginMount):
         except NoResultFound as exc:
             raise self.NotFound(id) from exc
         else:
-            return self.transform_data_to_entity(data)
+            return self.transform_data_to_entity(data._asdict())
 
     async def insert(self, obj: TEntity) -> None:
         """Insert an entity into the repository.
@@ -290,7 +290,7 @@ class AbstractSQLRepository(AbstractEntityRepository, metaclass=ABCPluginMount):
 
     def prepare_data_for_entity(self, data: Row) -> Mapping:
         """Template method: transform stored data into entity-ready data."""
-        return data._asdict()
+        return data
 
 
 class AwareDateTime(sa.types.TypeDecorator):
