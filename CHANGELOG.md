@@ -1,3 +1,9 @@
+## 1.0.3 (2024-01-27)
+
+### Fix
+
+- AbstractSQLRepository().get() must send a dict to prepare_data_for_entity()
+
 ## 1.0.2 (2024-01-26)
 
 ### Fix
