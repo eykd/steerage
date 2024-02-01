@@ -4,17 +4,29 @@ build-backend = "poetry.core.masonry.api"
 
 [tool.poetry]
 name = 'steerage'
-description = 'Pluggable storage backends for Python projects.'
+description = 'Pluggable async storage backends for Python projects'
 version = "1.0.3"
 authors = [
   "David Eyk <david@worldsenoughstudios.com>"
 ]
 homepage = "https://github.com/eykd/steerage/"
+repository = "https://github.com/eykd/steerage"
+documentation = "https://eykd.github.io/steerage/latest/"
+
 packages = [
     { include = "steerage", from = "src" },
 ]
-license = "MIT"
+license = "BSD"
 readme = "README.md"
+
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+    "Topic :: Software Development :: Libraries :: Application Frameworks",
+    "Topic :: Database :: Front-Ends",
+    "Environment :: Plugins",
+    "License :: OSI Approved :: BSD License",
+]
 
 [tool.poetry.dependencies]
 python = "^3.11"
