@@ -171,7 +171,7 @@ class TestEntityRepositoryImplementations:
             with pytest.raises(repo.AlreadyExists):
                 await repo.insert(stored_entity)
 
-    async def test_it_should_delete_a_entity(self, repo: AbstractEntityRepository, stored_entity: Entity):
+    async def test_it_should_delete_an_entity(self, repo: AbstractEntityRepository, stored_entity: Entity):
         async with repo:
             await repo.delete(stored_entity.id)
             await repo.commit()
@@ -233,6 +233,32 @@ class TestConcreteBaseQueryImplementations:
     Don't worry about AbstractBasequery coverage here. We'll cover
     that in the next suite
     """
+    async def test_it_should_insert_an_entity(self, repo, entity):
+        async with repo:
+            await repo.objects.insert(entity)
+            await repo.commit()
+
+        async with repo:
+            result = await repo.objects.get(id=entity.id)
+
+        assert result == entity
+
+    async def test_it_should_update_entities(self, repo, stored_entities):
+        async with repo:
+            result = await repo.objects.update(foo='bar')
+            await repo.commit()
+        assert result == len(stored_entities)
+
+        async with repo:
+            results = await repo.objects.as_list()
+
+        assert all([r.foo == 'bar' for r in results])
+
+    async def test_it_should_delete_entities(self, repo, stored_entities):
+        async with repo:
+            result = await repo.objects.filter(id=stored_entities[0].id).delete()
+
+        assert result == 1
 
     async def test_it_should_get_all_entities(self, repo, stored_entities):
         async with repo:

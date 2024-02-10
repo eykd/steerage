@@ -42,7 +42,6 @@ from steerage.repositories.base import (
 )
 from steerage.repositories.sessions import AbstractSession
 from steerage.types import TEntity, UUIDorStr
-from steerage.uuids import ensure_uuid
 
 if TYPE_CHECKING:  # pragma: nocover
     from pytest import FixtureRequest
@@ -151,47 +150,29 @@ class AbstractSQLQuery(AbstractBaseQuery):
 
     table: ClassVar[sa.Table]
 
-    async def _execute_sql(self, *args, **kwargs):
-        return await self.session._sa_session.execute(*args, **kwargs)
+    async def run_insert_query(self, data: Mapping) -> None:  # pragma: nocover
+        """Run an insert query against the backend."""
+        try:
+            await self._execute_sql(sa.insert(self.table).values(**data))
+        except IntegrityError as exc:
+            raise self.AlreadyExists from exc
 
-    async def _build_sa_query(self, sa_query):
-        if self.filters:
-            filters = []
-            for key, operator, value in self.filters:
-                column = getattr(self.table.c, key)
-                match operator:
-                    case "startswith":
-                        filters.append(column.startswith(value))
-                    case "endswith":
-                        filters.append(column.endswith(value))
-                    case "isnull":
-                        if value is True:
-                            filters.append(column == sa.null())
-                        else:
-                            filters.append(column != sa.null())
-                    case _:
-                        filters.append(CMP_OPERATORS[operator](column, value))
-            sa_query = sa_query.where(*filters)
+    async def run_update_query(self, **kwargs) -> int:
+        """Run this as an update query against the backend."""
+        sa_query = sa.update(self.table)
+        sa_query = await self._build_sa_query(sa_query)
+        sa_query = sa_query.values(**kwargs)
 
-        if self.ordering:
-            ordering = []
-            for key, ascending in self.ordering:
-                column = getattr(self.table.c, key)
-                if ascending:
-                    ordering.append(column)
-                else:
-                    ordering.append(sa.desc(column))
-            sa_query = sa_query.order_by(*ordering)
+        return (await self._execute_sql(sa_query)).rowcount
 
-        if self.offset:
-            sa_query = sa_query.offset(self.offset)
+    async def run_delete_query(self, **kwargs) -> int:
+        """Run this as a deletion query against the backend."""
+        sa_query = sa.delete(self.table)
+        sa_query = await self._build_sa_query(sa_query)
 
-        if self.limit:
-            sa_query = sa_query.limit(self.limit)
+        return (await self._execute_sql(sa_query)).rowcount
 
-        return sa_query
-
-    async def run_data_query(self) -> AsyncGenerator[TEntity, None]:
+    async def run_selection_query(self) -> AsyncGenerator[TEntity, None]:
         """Run this query against a relational database."""
         sa_query = sa.select(self.table)
         sa_query = await self._build_sa_query(sa_query)
@@ -212,6 +193,49 @@ class AbstractSQLQuery(AbstractBaseQuery):
 
         result = await self._execute_sql(sa_query)
         return result.scalar()
+
+    async def _execute_sql(self, *args, **kwargs):
+        return await self.session._sa_session.execute(*args, **kwargs)
+
+    async def _build_sa_query(self, sa_query):
+        if self.filters:
+            filters = []
+            for key, operator, value in self.filters:
+                column = getattr(self.table.c, key)
+                match operator:
+                    case "startswith":
+                        filters.append(column.startswith(value))
+                    case "endswith":
+                        filters.append(column.endswith(value))
+                    case "isnull":
+                        if value is True:
+                            filters.append(column == sa.null())
+                        else:
+                            filters.append(column != sa.null())
+                    case _:
+                        # NOTE: any remaining operators *must* be compatible
+                        # with Column object comparisons, e.g. `op.eq(column, value)`
+                        # being the same as `column == value`:
+                        filters.append(CMP_OPERATORS[operator](column, value))
+            sa_query = sa_query.where(*filters)
+
+        if self.ordering:
+            ordering = []
+            for key, ascending in self.ordering:
+                column = getattr(self.table.c, key)
+                if ascending:
+                    ordering.append(column)
+                else:
+                    ordering.append(sa.desc(column))
+            sa_query = sa_query.order_by(*ordering)
+
+        if self.offset:
+            sa_query = sa_query.offset(self.offset)
+
+        if self.limit:
+            sa_query = sa_query.limit(self.limit)
+
+        return sa_query
 
 
 @dataclass
@@ -234,63 +258,6 @@ class AbstractSQLRepository(AbstractEntityRepository, metaclass=ABCPluginMount):
     session_class: ClassVar[Type[SQLSession]] = SQLSession
     query_class: ClassVar[Type[AbstractSQLQuery]]
 
-    async def _execute_sql(self, *args, **kwargs):
-        return await self.session._sa_session.execute(*args, **kwargs)
-
-    async def get(self, id: UUIDorStr) -> TEntity:
-        """Retrieve a previously-stored entity record by primary key.
-
-        If the entity does not exist in storage, raises `NotFound`.
-        """
-        result = await self._execute_sql(sa.select(self.table).where(self.table.c.id == ensure_uuid(id)))
-        try:
-            data = result.one()
-        except NoResultFound as exc:
-            raise self.NotFound(id) from exc
-        else:
-            return self.transform_data_to_entity(data._asdict())
-
-    async def insert(self, obj: TEntity) -> None:
-        """Insert an entity into the repository.
-
-        Attempting to insert a second entity with the same primary key
-        will raise `AlreadyExists`.
-        """
-        data = self.transform_entity_to_data(obj)
-        try:
-            await self._execute_sql(sa.insert(self.table).values(**data))
-        except IntegrityError as exc:
-            raise self.AlreadyExists from exc
-
-    async def update(self, obj: TEntity) -> None:
-        """Update a previously-stored entity record.
-
-        Attempting to update an entity that has not already been
-        inserted will raise `NotFound`.
-        """
-        data = self.transform_entity_to_data(obj)
-        result = await self._execute_sql(sa.update(self.table).where(self.table.c.id == obj.id).values(**data))
-        if result.rowcount == 0:
-            raise self.NotFound(id)
-
-    async def delete(self, id: Union[str, UUID]):
-        """Delete a previously-stored entity record by primary key.
-
-        If the entity does not exist in storage, this is a no-op.
-        """
-        await self._execute_sql(sa.delete(self.table).where(self.table.c.id == ensure_uuid(id)))
-
-    async def update_attrs(self, id: UUIDorStr, **kwargs) -> None:
-        """Update the specified keyword attributes for an entity ID.
-
-        Attempting to update an entity that has not already been
-        inserted will raise `NotFound`.
-        """
-        await self._execute_sql(sa.update(self.table).where(self.table.c.id == ensure_uuid(id)).values(**kwargs))
-
-    def prepare_data_for_entity(self, data: Row) -> Mapping:
-        """Template method: transform stored data into entity-ready data."""
-        return data
 
 
 class AwareDateTime(sa.types.TypeDecorator):

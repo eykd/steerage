@@ -1,4 +1,6 @@
 """An ephemeral in-memory implementation of entity storage"""
+from __future__ import annotations
+
 import operator as op
 from collections.abc import Mapping
 from contextlib import asynccontextmanager
@@ -26,7 +28,7 @@ from steerage.repositories.base import (
     AbstractEntityRepository,
 )
 from steerage.repositories.sessions import AbstractSession
-from steerage.types import TEntity, UUIDorStr
+from steerage.types import TEntity
 
 if TYPE_CHECKING:  # pragma: nocover
     from pytest import FixtureRequest
@@ -74,8 +76,30 @@ class AbstractInMemoryQuery(AbstractBaseQuery):
 
     table_name: ClassVar[str]
 
-    async def run_data_query(self) -> AsyncGenerator[Mapping, None]:
-        """Run this query against the in-memory database."""
+    async def run_insert_query(self, data: Mapping) -> None:  # pragma: nocover
+        """Run an insert query against the backend."""
+        self.validate_constraints(data)
+        self._upsert(data)
+
+    async def run_update_query(self, **kwargs) -> int:
+        """Run this as an update query against the backend."""
+        count = 0
+        async for entity in self:
+            new_entity = entity.model_copy(update=kwargs)
+            self._upsert(self.transform_entity_to_data(new_entity))
+            count += 1
+        return count
+
+    async def run_delete_query(self, **kwargs) -> int:
+        """Run this as a deletion query against the backend."""
+        count = 0
+        async for entity in self:
+            self.session.tables = self.session.tables.transform((self.table_name, str(entity.id)), discard)
+            count += 1
+        return count
+
+    async def run_selection_query(self) -> AsyncGenerator[Mapping, None]:
+        """Run this selection query against the in-memory database."""
         rows = Database.tables[self.table_name].values()
 
         for key, operator, value in self.filters:
@@ -102,6 +126,43 @@ class AbstractInMemoryQuery(AbstractBaseQuery):
         for row in rows:
             yield thaw(row)
 
+    def validate_constraints(self, data: Mapping) -> None:
+        """Template method: validate any invariant constraints for the in-memory table.
+
+        By default, ensure that insertions do not clobber existing records.
+        """
+        if str(data["id"]) in self.session.tables[self.table_name]:
+            raise self.AlreadyExists(data["id"])
+
+    def _upsert(self, data: Mapping) -> None:
+        data = freeze(data)
+        self.session.tables = self.session.tables.transform((self.table_name, str(data["id"])), data)
+
+
+class Database:
+    """Simple in-memory global database singleton
+
+    There's no point in instantiating this class, as all table data is
+    stored at the class level.
+
+    The table data uses immutable data structures from the
+    `pyrsistent` library. It is best to only access this data through
+    a concrete implementation of `AbstractInMemoryRepository`.
+
+    """
+
+    tables: PMap[str, PMap[str, PMap[str, Any]]] = freeze({})
+
+    @classmethod
+    def clear(cls) -> None:
+        """Clear the in-memory data tables.
+
+        Note: When testing, this should be performed after each test
+        to ensure a clean test environment.
+
+        """
+        cls.tables = freeze({name: {} for name in AbstractInMemoryRepository._get_table_names()})
+
 
 @dataclass(repr=False)
 class AbstractInMemoryRepository(AbstractEntityRepository, metaclass=ABCPluginMount):
@@ -119,86 +180,11 @@ class AbstractInMemoryRepository(AbstractEntityRepository, metaclass=ABCPluginMo
     session_class: ClassVar[Type[InMemorySession]] = InMemorySession
     query_class: ClassVar[Type[AbstractInMemoryQuery]]
     entity_class: ClassVar[Type[TEntity]]
+    database: ClassVar[Type[Database]] = Database
 
     @classmethod
     def _get_table_names(cls) -> set[str]:
         return {plug.table_name for plug in cls.plugins}
-
-    async def get(self, id: UUIDorStr) -> TEntity:
-        """Retrieve a previously-stored entity record by primary key.
-
-        If the entity does not exist in storage, raises `NotFound`.
-        """
-        try:
-            data = self.session.tables[self.table_name][str(id)]
-            return self.transform_data_to_entity(thaw(data))
-        except KeyError as exc:
-            raise self.NotFound from exc
-
-    def _upsert(self, obj: TEntity) -> None:
-        data = freeze(self.transform_entity_to_data(obj))
-        self.session.tables = self.session.tables.transform((self.table_name, str(obj.id)), data)
-
-    async def insert(self, obj: TEntity) -> None:
-        """Insert an entity into the repository.
-
-        Attempting to insert a second entity with the same primary key
-        will raise `AlreadyExists`.
-        """
-        self.validate_constraints(obj)
-        self._upsert(obj)
-
-    async def update(self, obj: TEntity) -> None:
-        """Update a previously-stored entity record.
-
-        Attempting to update an entity that has not already been
-        inserted will raise `NotFound`.
-        """
-        if str(obj.id) not in self.session.tables[self.table_name]:
-            raise self.NotFound(obj.id)
-        self._upsert(obj)
-
-    async def delete(self, id: Union[str, UUID]):
-        """Delete a previously-stored entity record by primary key.
-
-        If the entity does not exist in storage, this is a no-op.
-        """
-        self.session.tables = self.session.tables.transform((self.table_name, str(id)), discard)
-
-    def validate_constraints(self, obj: TEntity) -> None:
-        """Template method: validate any invariant constraints for the in-memory table.
-
-        By default, ensure that insertions do not clobber existing records.
-        """
-        if str(obj.id) in self.session.tables[self.table_name]:
-            raise self.AlreadyExists(obj.id)
-
-
-class Database:
-    """Simple in-memory global database singleton
-
-    There's no point in instantiating this class, as all table data is
-    stored at the class level.
-
-    The table data uses immutable data structures from the
-    `pyrsistent` library. It is best to only access this data through
-    a concrete implementation of `AbstractInMemoryRepository`.
-
-    """
-
-    tables: PMap[str, PMap[str, PMap[str, Any]]] = freeze(
-        {name: {} for name in AbstractInMemoryRepository._get_table_names()}
-    )
-
-    @classmethod
-    def clear(cls) -> None:
-        """Clear the in-memory data tables.
-
-        Note: When testing, this should be performed after each test
-        to ensure a clean test environment.
-
-        """
-        cls.tables = freeze({name: {} for name in AbstractInMemoryRepository._get_table_names()})
 
 
 def get_memdb_test_repo_builder(repo_class: Type[AbstractInMemoryRepository]) -> Callable:

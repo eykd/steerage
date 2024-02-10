@@ -6,6 +6,7 @@ hassle of a relational database yet.
 import operator as op
 import os
 import shelve
+from collections.abc import Mapping
 from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -17,10 +18,7 @@ from typing import (
     ClassVar,
     Type,
     TypeVar,
-    Union,
 )
-from uuid import UUID
-
 import funcy as fn
 from convoke.configs import BaseConfig, env_field
 from convoke.plugins import ABCPluginMount
@@ -103,8 +101,34 @@ class AbstractShelveQuery(AbstractBaseQuery):
 
     table_name: ClassVar[str]
 
-    async def run_data_query(self) -> AsyncGenerator[dict, None]:
-        """Run this query against the ShelveDB database.
+    async def run_insert_query(self, data: Mapping) -> None:  # pragma: nocover
+        """Run an insert query against the backend."""
+        key = self._get_key(data["id"])
+        self.validate_constraints(key, data)
+        self._upsert(key, data)
+
+    async def run_update_query(self, **kwargs) -> int:
+        """Run this as an update query against the backend."""
+        count = 0
+        async for entity in self:
+            new_entity = entity.model_copy(update=kwargs)
+            key = self._get_key(new_entity.id)
+            self._upsert(key, new_entity.model_dump())
+            count += 1
+        return count
+
+    async def run_delete_query(self, **kwargs) -> int:
+        """Run this as a deletion query against the backend."""
+        count = 0
+        async for entity in self:
+            key = self._get_key(entity.id)
+            self.session.data = self.session.data.transform((key,), discard)
+            self.session.deleted_keys = self.session.deleted_keys.add(key)
+            count += 1
+        return count
+
+    async def run_selection_query(self) -> AsyncGenerator[Mapping, None]:
+        """Run this selection query against the ShelveDB database.
 
         NOTE: This query is *extremely* inefficient on large datasets, and
         should only be used in development.
@@ -136,6 +160,22 @@ class AbstractShelveQuery(AbstractBaseQuery):
         for row in rows:
             yield thaw(row)
 
+    def validate_constraints(self, key: str, data: Mapping[str, Any]) -> None:
+        """Template method: validate any invariant constraints for the dbm table.
+
+        By default, ensure that insertions do not clobber existing records.
+        """
+        if key in self.session.shelf:
+            raise self.AlreadyExists(data["id"])
+
+    def _get_key(self, id: UUIDorStr) -> str:
+        return f"{self.table_name}:{id}"
+
+    def _upsert(self, key: str, data: Mapping[str, Any]) -> None:
+        data = freeze(data)
+        self.session.data = self.session.data.set(key, data)
+        self.session.deleted_keys = self.session.deleted_keys.discard(key)
+
 
 @dataclass
 class AbstractShelveRepository(AbstractEntityRepository, metaclass=ABCPluginMount):
@@ -155,63 +195,6 @@ class AbstractShelveRepository(AbstractEntityRepository, metaclass=ABCPluginMoun
     config_class: ClassVar[Type[ShelveConfig]] = ShelveConfig
 
     query_class: ClassVar[Type[AbstractShelveQuery]]
-
-    def _get_key(self, id: UUIDorStr) -> str:
-        return f"{self.table_name}:{id}"
-
-    async def get(self, id: UUIDorStr) -> TEntity:
-        """Retrieve a previously-stored entity record by primary key.
-
-        If the entity does not exist in storage, raises `NotFound`.
-        """
-        try:
-            data = self.session.shelf[self._get_key(id)]
-            return self.transform_data_to_entity(thaw(data))
-        except KeyError as exc:
-            raise self.NotFound from exc
-
-    def _upsert(self, key: str, obj: TEntity) -> None:
-        data = freeze(self.transform_entity_to_data(obj))
-        self.session.data = self.session.data.set(key, data)
-        self.session.deleted_keys = self.session.deleted_keys.discard(key)
-
-    async def insert(self, obj: TEntity) -> None:
-        """Insert an entity into the repository.
-
-        Attempting to insert a second entity with the same primary key
-        will raise `AlreadyExists`.
-        """
-        key = self._get_key(obj.id)
-        self.validate_constraints(key, obj)
-        self._upsert(key, obj)
-
-    async def update(self, obj: TEntity) -> None:
-        """Update a previously-stored entity record.
-
-        Attempting to update an entity that has not already been
-        inserted will raise `NotFound`.
-        """
-        key = self._get_key(obj.id)
-        if key not in self.session.shelf:
-            raise self.NotFound(obj.id)
-        self._upsert(key, obj)
-
-    async def delete(self, id: Union[str, UUID]):
-        """Delete a previously-stored entity record by primary key.
-
-        If the entity does not exist in storage, this is a no-op.
-        """
-        key = self._get_key(id)
-        self.session.data = self.session.data.transform((key,), discard)
-        self.session.deleted_keys = self.session.deleted_keys.add(key)
-
-    def validate_constraints(self, key: str, obj: TEntity) -> None:
-        """Template method: validate any invariant constraints for the in-memory table.
-
-        By default, ensure that insertions do not clobber existing records.
-        """
-        if key in self.session.shelf:
-            raise self.AlreadyExists(obj.id)
 
 
 def get_shelvedb_test_repo_builder(repo_class: Type[AbstractShelveRepository]) -> Callable:
