@@ -5,11 +5,13 @@ import pytest
 
 from steerage.filestorages.base import AbstractFileStorage
 from steerage.filestorages.memdb import build_memdb_test_repo
+from steerage.filestorages.localfiles import build_localfiles_test_repo
 from steerage.filestorages.s3 import build_s3_test_repo
 
 STORAGE_FACTORIES = [
     build_memdb_test_repo,
     build_s3_test_repo,
+    build_localfiles_test_repo,
 ]
 
 
