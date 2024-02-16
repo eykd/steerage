@@ -7,5 +7,4 @@ poetry run pytest \
     --last-failed \
     --exitfirst \
     --disable-warnings \
-    -m "not slow" \
     "$@"
