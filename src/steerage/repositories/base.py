@@ -7,7 +7,6 @@ from abc import ABC, abstractmethod
 from collections import namedtuple
 from collections.abc import Mapping
 from dataclasses import dataclass, field
-from functools import cached_property
 from typing import (
     Any,
     AsyncGenerator,
@@ -312,7 +311,7 @@ class AbstractBaseQuery(ABC, Generic[TEntity]):
         """Template method: transform stored data into entity-ready data."""
         out = {}
         for key, value in data.items():
-            prepare = getattr(self, f'prepare_{key}', None)
+            prepare = getattr(self, f"prepare_{key}", None)
             if prepare is not None:
                 value = prepare(value, data)
             out[key] = value

@@ -13,9 +13,7 @@ from typing import (
     ClassVar,
     Type,
     TypeVar,
-    Union,
 )
-from uuid import UUID
 
 import funcy as fn
 from convoke.plugins import ABCPluginMount

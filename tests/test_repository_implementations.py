@@ -55,11 +55,12 @@ class Entity(BaseModel):
 
     model_config = ConfigDict(frozen=True)
 
+
 class SubEntityFactory(factory.Factory):
     class Meta:
         model = SubEntity
 
-    bar = 'blah'
+    bar = "blah"
 
 
 class EntityFactory(factory.Factory):
@@ -132,7 +133,7 @@ class SQLEntityQuery(AbstractEntityQuery, AbstractSQLQuery):
 
     def prepare_data_for_entity(self, data: Mapping) -> Mapping:
         sub_bar = data.pop("sub_bar")
-        data['sub'] = {'bar': sub_bar}
+        data["sub"] = {"bar": sub_bar}
         return super().prepare_data_for_entity(data)
 
 
@@ -238,9 +239,7 @@ class TestEntityRepositoryImplementations:
 
         assert result.sub.bar == "banana"
 
-    async def test_it_should_fail_to_update_a_nonexistent_entity(
-        self, repo: AbstractEntityRepository, entity: Entity
-    ):
+    async def test_it_should_fail_to_update_a_nonexistent_entity(self, repo: AbstractEntityRepository, entity: Entity):
         async with repo:
             with pytest.raises(repo.NotFound):
                 await repo.update(entity)
@@ -280,6 +279,7 @@ class TestConcreteBaseQueryImplementations:
     Don't worry about AbstractBasequery coverage here. We'll cover
     that in the next suite
     """
+
     async def test_it_should_insert_an_entity(self, repo, entity):
         async with repo:
             await repo.objects.insert(entity)
@@ -292,14 +292,14 @@ class TestConcreteBaseQueryImplementations:
 
     async def test_it_should_update_entities(self, repo, stored_entities):
         async with repo:
-            result = await repo.objects.update(foo='bar')
+            result = await repo.objects.update(foo="bar")
             await repo.commit()
         assert result == len(stored_entities)
 
         async with repo:
             results = await repo.objects.as_list()
 
-        assert all([r.foo == 'bar' for r in results])
+        assert all([r.foo == "bar" for r in results])
 
     async def test_it_should_delete_entities(self, repo, stored_entities):
         async with repo:

@@ -19,15 +19,13 @@ from collections.abc import Mapping
 from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import TYPE_CHECKING, AsyncGenerator, ClassVar, Type, TypeVar, Union
-from uuid import UUID
+from typing import TYPE_CHECKING, AsyncGenerator, ClassVar, Type, TypeVar
 
 import pytz
 import sqlalchemy as sa
 from convoke.configs import BaseConfig, env_field
 from convoke.plugins import ABCPluginMount
-from sqlalchemy.engine import Row
-from sqlalchemy.exc import IntegrityError, NoResultFound
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import (
     AsyncEngine,
     AsyncSession,
@@ -41,7 +39,7 @@ from steerage.repositories.base import (
     AbstractEntityRepository,
 )
 from steerage.repositories.sessions import AbstractSession
-from steerage.types import TEntity, UUIDorStr
+from steerage.types import TEntity
 
 if TYPE_CHECKING:  # pragma: nocover
     from pytest import FixtureRequest
@@ -257,7 +255,6 @@ class AbstractSQLRepository(AbstractEntityRepository, metaclass=ABCPluginMount):
     schema: ClassVar[sa.MetaData]
     session_class: ClassVar[Type[SQLSession]] = SQLSession
     query_class: ClassVar[Type[AbstractSQLQuery]]
-
 
 
 class AwareDateTime(sa.types.TypeDecorator):
