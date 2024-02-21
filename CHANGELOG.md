@@ -1,3 +1,16 @@
+## 2.0.0 (2024-02-21)
+
+### BREAKING CHANGE
+
+- `query_class` *must* now be defined on a repository subclass.
+
+### Feat
+
+- Handle nested models more gracefully; add per-field data prep
+- Local filesystem-based filestorage implementation
+- Teach queries insert, update, delete, which repos now use
+- add README.md, LICENSE.md, better package metadata
+
 ## 1.0.3 (2024-01-27)
 
 ### Fix
