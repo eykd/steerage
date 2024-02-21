@@ -111,7 +111,7 @@ class AbstractShelveQuery(AbstractBaseQuery):
         """Run this as an update query against the backend."""
         count = 0
         async for entity in self:
-            new_entity = entity.model_copy(update=kwargs)
+            new_entity = entity.model_copy(update=self.prepare_data_for_entity(kwargs))
             key = self._get_key(new_entity.id)
             self._upsert(key, new_entity.model_dump())
             count += 1

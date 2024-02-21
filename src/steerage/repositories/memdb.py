@@ -85,7 +85,7 @@ class AbstractInMemoryQuery(AbstractBaseQuery):
         """Run this as an update query against the backend."""
         count = 0
         async for entity in self:
-            new_entity = entity.model_copy(update=kwargs)
+            new_entity = entity.model_copy(update=self.prepare_data_for_entity(kwargs))
             self._upsert(self.transform_entity_to_data(new_entity))
             count += 1
         return count

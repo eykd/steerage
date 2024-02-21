@@ -310,7 +310,13 @@ class AbstractBaseQuery(ABC, Generic[TEntity]):
 
     def prepare_data_for_entity(self, data: Mapping) -> Mapping:
         """Template method: transform stored data into entity-ready data."""
-        return data
+        out = {}
+        for key, value in data.items():
+            prepare = getattr(self, f'prepare_{key}', None)
+            if prepare is not None:
+                value = prepare(value, data)
+            out[key] = value
+        return out
 
 
 @dataclass
@@ -415,7 +421,7 @@ class AbstractEntityRepository(ABC, Generic[TEntity]):
         inserted will raise `NotFound`.
         """
         entity = await self.get(id)
-        entity = entity.model_copy(update=kwargs)
+        entity = entity.model_copy(update=kwargs, deep=True)
         await self.update(entity)
 
 
